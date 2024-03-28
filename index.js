@@ -142,11 +142,37 @@ async function run() {
             }
         });
 
-        // get top rated products
-        app.get('/api/v1/products/top-rated', async (req, res) => {
-            const products = await productsCollection.find({ 'ratings.rating': { $gte: 4 } }).sort({ 'ratings.rating': -1 }).limit(6).toArray();
-            res.json(products);
+
+
+        app.get('/api/v1/products/top-rated-by-category', async (req, res) => {
+            try {
+                const topProductsByCategory = await getTopRatedProductsByCategory();
+                res.json(topProductsByCategory);
+            } catch (error) {
+                res.status(500).json({ error: 'Internal server error' });
+            }
         });
+
+        async function getTopRatedProductsByCategory() {
+            let categories = await productsCollection.distinct('category');
+            categories = categories.slice(0, 6);
+            const topProductsByCategory = [];
+
+            for (const category of categories) {
+                const topProducts = await productsCollection
+                    .find({ category, 'ratings.rating': { $gte: 4 } })
+                    .sort({ 'ratings.rating': -1 })
+                    .limit(3)
+                    .toArray();
+
+                if (topProducts.length > 0) {
+                    topProductsByCategory.push({ category: category, products: topProducts });
+                }
+            }
+
+            return topProductsByCategory;
+        }
+
         // get top 6 products categories 
         app.get('/api/v1/products/categories', async (req, res) => {
             const categories = await productsCollection.distinct('category');
@@ -177,6 +203,7 @@ async function run() {
         // get products by price range , brands, category, rating from the query
         app.get('/api/v1/products/filter', async (req, res) => {
             const query = req.query;
+            console.log(query);
             const filter = {};
             if (query.category) {
                 filter.category = query.category;
@@ -204,7 +231,7 @@ async function run() {
         // get specific products info for showing all products on dashboard by sorting with productId, name , img, price, rating and category
 
         app.get('/api/v1/dashboard/all-products', async (req, res) => {
-            const products = await productsCollection.find().sort({ _id: -1 }).project({ name: 1, img: 1, price: 1, rating: 1, category: 1, images: 1 }).toArray();
+            const products = await productsCollection.find().sort({ _id: -1 }).project({ name: 1, product_id: 1, price: 1, rating: 1, category: 1, images: 1 }).toArray();
             res.json(products);
         }
         );
