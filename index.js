@@ -33,8 +33,9 @@ async function run() {
         // Connect to MongoDB
         await client.connect();
         console.log("Connected to MongoDB");
-        const db = client.db('assignment-6');
+        const db = client.db('clothing-store-nextjs');
         const collection = db.collection('users');
+        const productsCollection = db.collection('products');
 
         // User Registration
         app.post('/api/v1/register', async (req, res) => {
@@ -94,63 +95,127 @@ async function run() {
         // WRITE YOUR CODE HERE
         // ==============================================================
 
-        // supply posts
-        app.get('/api/v1/supplies', async (req, res) => {
-            const supplies = await db.collection('supplies').find().toArray();
-            res.json(supplies);
+
+
+        // get all products
+        app.get('/api/v1/products', async (req, res) => {
+            const products = await productsCollection.find().toArray();
+            res.json(products);
         });
 
-        // get top 6 supplies
-        app.get('/api/v1/top-supplies', async (req, res) => {
-            const supplies = await db.collection('supplies')
-                .find()
-                .sort({ amount: -1 }) // Sort by amount in descending order
-                .limit(6) // Limit the result to 6 documents
-                .toArray();
+        // get all products by category
+        app.get('/api/v1/products/category/:category', async (req, res) => {
+            const category = req.params.category;
+            const products = await productsCollection.find({ category }).toArray();
+            res.json(products);
+        }
+        );
+        //get latest 6 products
 
-            res.json(supplies);
-        });
-        // update supply by id
-        app.put('/api/v1/update-supply/:id', async (req, res) => {
-            const { id } = req.params;
-            const { title, category, amount } = req.body;
-
+        app.get('/api/v1/products/latest', async (req, res) => {
             try {
-                const result = await db.collection('supplies').updateOne(
-                    { _id: new ObjectId(id) },
-                    { $set: { title, category, amount } } // Update the fields you want to change
-                );
-
-                res.json(result);
+                const products = await productsCollection.find().sort({ _id: -1 }).limit(6).toArray();
+                res.json(products);
             } catch (error) {
-                console.error(error);
-                res.status(500).json({ message: 'Internal server error' });
+                console.error("Error fetching latest products:", error);
+                res.status(500).json({ error: "Internal server error" });
+            }
+        });
+        // get flash sale 5 products
+        app.get('/api/v1/products/flash-sale', async (req, res) => {
+            try {
+                const products = await productsCollection.find({ flash_sale: true }).limit(5).toArray();
+                res.json(products);
+            } catch (error) {
+                console.error("Error fetching flash sale products:", error);
+                res.status(500).json({ error: "Internal server error" });
+            }
+        });
+        // get all flash sale products
+        app.get('/api/v1/products/flash-sale/all', async (req, res) => {
+            try {
+                const products = await productsCollection.find({ flash_sale: true }).toArray();
+                res.json(products);
+            } catch (error) {
+                console.error("Error fetching flash sale products:", error);
+                res.status(500).json({ error: "Internal server error" });
             }
         });
 
-
-
-
-        // delete supply by _id
-        app.delete('/api/v1/supplies/:id', async (req, res) => {
-            const { id } = req.params;
-            const result = await db.collection('supplies').deleteOne({ _id: new ObjectId(id) });
-            res.json(result);
+        // get top rated products
+        app.get('/api/v1/products/top-rated', async (req, res) => {
+            const products = await productsCollection.find({ 'ratings.rating': { $gte: 4 } }).sort({ 'ratings.rating': -1 }).limit(6).toArray();
+            res.json(products);
         });
-        // create new supply
-        app.post('/api/v1/supplies', async (req, res) => {
-            const supply = req.body;
-            const result = await db.collection('supplies').insertOne(supply);
-            res.json(result);
-
+        // get top 6 products categories 
+        app.get('/api/v1/products/categories', async (req, res) => {
+            const categories = await productsCollection.distinct('category');
+            res.json(categories);
         });
-        // get top donor testimonial data
-        app.get('/api/v1/top-provider-testimonials', async (req, res) => {
-            const topProviderTestimonials = await db.collection('topProviders').find().toArray();
-            res.json(topProviderTestimonials);
+        // get top 6 category
+        app.get('/api/v1/products/categories/top', async (req, res) => {
+            const categories = await productsCollection.aggregate([
+                { $group: { _id: '$category', count: { $sum: 1 } } },
+                { $sort: { count: -1 } },
+                { $limit: 6 }
+            ]).toArray();
+            res.json(categories);
+        });
+        // get products by category query 
+        app.get('/api/v1/products/category', async (req, res) => {
+            const category = req.query.category;
+            const products = await productsCollection.find({ category: category }).toArray();
+            res.json(products);
+        });
+
+        // get products by search query
+        app.get('/api/v1/products/search/:query', async (req, res) => {
+            const query = req.params.query;
+            const products = await productsCollection.find({ $text: { $search: query } }).toArray();
+            res.json(products);
+        });
+        // get products by price range , brands, category, rating from the query
+        app.get('/api/v1/products/filter', async (req, res) => {
+            const query = req.query;
+            const filter = {};
+            if (query.category) {
+                filter.category = query.category;
+            }
+            if (query.brand) {
+                filter.brand = query.brand;
+            }
+            if (query.rating) {
+                filter.rating = { $gte: parseInt(query.rating) };
+            }
+            if (query.price) {
+                const [min, max] = query.price.split('-');
+                filter.price = { $gte: parseInt(min), $lte: parseInt(max) };
+            }
+            const products = await productsCollection.find(filter).toArray();
+            res.json(products);
+        });
+        // get a single product by id
+        app.get('/api/v1/products/:id', async (req, res) => {
+            const id = req.params.id;
+            const product = await productsCollection.findOne({ product_id: id });
+            res.json(product);
+        });
+        // dashboard=============================
+        // get specific products info for showing all products on dashboard by sorting with productId, name , img, price, rating and category
+
+        app.get('/api/v1/dashboard/all-products', async (req, res) => {
+            const products = await productsCollection.find().sort({ _id: -1 }).project({ name: 1, img: 1, price: 1, rating: 1, category: 1, images: 1 }).toArray();
+            res.json(products);
         }
         );
-        // dashboard supply data
+
+
+
+
+
+
+
+
 
 
         // Start the server
